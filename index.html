@@ -162,7 +162,6 @@
             margin-bottom: 12px;
         }
 
-        /* Модальное окно */
         .modal {
             display: none;
             position: fixed;
@@ -209,7 +208,7 @@
                 <span id="payBalance">Баланс: 0.0</span>
             </div>
             <div class="swap-input-row">
-                <input type="number" id="payInput" class="swap-input" placeholder="0.0" value="0.01">
+                <input type="number" id="payInput" class="swap-input" placeholder="0.0" value="0.001">
                 <button class="token-select-btn" onclick="openModal('pay')">
                     <span id="payTokenSymbol">ETH</span> ▼
                 </button>
@@ -240,14 +239,13 @@
             </div>
             <div class="detail-row">
                 <span>Маршрутизатор</span>
-                <span>Uniswap V3 Router</span>
+                <span>Uniswap V3 SwapRouter02</span>
             </div>
         </div>
 
         <button class="action-btn" id="swapBtn" onclick="executeRealSwap()" disabled style="opacity: 0.6;">Свапнуть в сети Base</button>
     </div>
 
-    <!-- Модальное окно выбора токена -->
     <div id="tokenModal" class="modal" onclick="closeModal(event)">
         <div class="modal-content">
             <h3 style="margin-top: 0; font-size: 18px;">Выберите токен</h3>
@@ -261,8 +259,9 @@
     </div>
 
     <script>
-        const BASE_CHAIN_ID = '0x2105'; // 8453
-        const UNISWAP_V3_ROUTER = '0x2626664c2603336E57B271c5C0b26F421741e481';
+        const BASE_CHAIN_ID = '0x2105'; 
+        // Официальный адрес SwapRouter02 на Base
+        const UNISWAP_V3_ROUTER = '0x2f62f3abf5bc43901bca03f8319f36f9fcb2f703';
 
         const TOKENS = {
             'ETH': { address: '0x4200000000000000000000000000000000000006', decimals: 18, native: true },
@@ -287,15 +286,10 @@
 
                 const chainId = await window.ethereum.request({ method: 'eth_chainId' });
                 if (chainId !== BASE_CHAIN_ID) {
-                    try {
-                        await window.ethereum.request({
-                            method: 'wallet_switchEthereumChain',
-                            params: [{ chainId: BASE_CHAIN_ID }],
-                        });
-                    } catch (switchError) {
-                        alert('Пожалуйста, переключите сеть в кошельке на Base.');
-                        return;
-                    }
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: BASE_CHAIN_ID }],
+                    });
                 }
 
                 provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -307,11 +301,10 @@
                 
                 document.getElementById('swapBtn').removeAttribute('disabled');
                 document.getElementById('swapBtn').style.opacity = '1';
-                
                 document.getElementById('payBalance').innerText = 'Баланс: Готов';
             } catch (error) {
                 console.error(error);
-                alert('Ошибка подключения кошелька: ' + (error.message || error));
+                alert('Ошибка подключения: ' + (error.message || error));
             }
         }
 
@@ -353,7 +346,7 @@
             }
 
             try {
-                alert('Подготовка транзакции обмена в сети Base...');
+                alert('Запуск транзакции...');
                 const amountIn = ethers.utils.parseUnits(amountVal, TOKENS[payToken].decimals);
 
                 if (!TOKENS[payToken].native) {
@@ -367,17 +360,16 @@
                 }
 
                 const routerAbi = [
-                    "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)"
+                    "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)"
                 ];
                 const routerContract = new ethers.Contract(UNISWAP_V3_ROUTER, routerAbi, signer);
 
-                // Передача параметров массивом решает проблему несоответствия типов в ethers.js
-                const paramsArray = [
+                // Без дедлайна (убрали параметр deadline, который часто вызывает баги в некоторых роутерах)
+                const params = [
                     TOKENS[payToken].address,
                     TOKENS[receiveToken].address,
                     3000,
                     userAddress,
-                    Math.floor(Date.now() / 1000) + 600,
                     amountIn,
                     0,
                     0
@@ -385,18 +377,18 @@
 
                 let tx;
                 if (TOKENS[payToken].native) {
-                    tx = await routerContract.exactInputSingle(paramsArray, { value: amountIn });
+                    tx = await routerContract.exactInputSingle(params, { value: amountIn });
                 } else {
-                    tx = await routerContract.exactInputSingle(paramsArray);
+                    tx = await routerContract.exactInputSingle(params);
                 }
 
-                alert('Транзакция отправлена! Ожидание подтверждения в сети Base...');
+                alert('Транзакция отправлена в сеть Base!');
                 await tx.wait();
-                alert('Свап успешно выполнен!');
+                alert('Успешно!');
 
             } catch (err) {
                 console.error(err);
-                alert('Ошибка при выполнении транзакции: ' + (err.message || err));
+                alert('Ошибка: ' + (err.data?.message || err.message || err));
             }
         }
     </script>
